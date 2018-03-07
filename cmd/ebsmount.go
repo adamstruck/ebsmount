@@ -2,59 +2,60 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/base2genomics/batchit/exsmount"
+	"github.com/adamstruck/ebsmount/ebsmount"
 	"github.com/spf13/cobra"
 )
 
 // RootCmd represents the root command
 var RootCmd = &cobra.Command{
-	Use:   "ebsmount",
-	Short: "Mount an EBS volume to an EC2 instance and run a command.",
+	Use:           "ebsmount",
+	Short:         "Mount an EBS volume to an EC2 instance and run a command.",
+	SilenceUsage:  true,
+	SilenceErrors: false,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		
-		if cli.Exsmount.VolumeType != "gp2" && cli.Exsmount.VolumeType != "io1" && cli.Exsmount.VolumeType != "st1" && cli.Exsmount.VolumeType != "sc1" && cli.Exsmount.VolumeType != "standard" {
-			return fmt.Errorf("invalid value passed to 'volume-type' flag; must be one of [ 'gp2', 'io1', 'st1', 'sc1', 'standard' ]")
+		validationErrs := []string{}
+
+		if cli.Command == "" {
+			validationErrs = append(validationErrs, "required flag 'command' not set")
 		}
-		
+
+		if cli.Exsmount.MountPoint == "" {
+			validationErrs = append(validationErrs, "required flag 'mount-point' not set")
+		} else if !filepath.IsAbs(cli.Exsmount.MountPoint) {
+			validationErrs = append(validationErrs, "invalid value passed to 'mount-point' flag; must be an absolute path")
+		}
+
+		if cli.Exsmount.VolumeType != "gp2" && cli.Exsmount.VolumeType != "io1" && cli.Exsmount.VolumeType != "st1" && cli.Exsmount.VolumeType != "sc1" && cli.Exsmount.VolumeType != "standard" {
+			validationErrs = append(validationErrs, "invalid value passed to 'volume-type' flag; must be one of [ 'gp2', 'io1', 'st1', 'sc1', 'standard' ]")
+		}
+
 		if cli.Exsmount.FSType != "ext4" {
-			return fmt.Errorf("invalid value passed to 'fs-type' flag; must be one of [ 'ext4' ]")
+			validationErrs = append(validationErrs, "invalid value passed to 'fs-type' flag; must be one of [ 'ext4' ]")
 		}
 
 		if cli.Exsmount.Iops != 0 && (cli.Exsmount.Iops < 100 || cli.Exsmount.Iops > 20000) {
-			return fmt.Errorf("invalid value passed to 'iops' flag; range is 100 to 20000 and <= 50*size of volume")
+			validationErrs = append(validationErrs, "invalid value passed to 'iops' flag; range is 100 to 20000 and <= 50*size of volume")
 		}
 
 		if cli.Exsmount.Size < 0 {
-			return fmt.Errorf("invalid value passed to 'size' flag; must be a positive integer")
+			validationErrs = append(validationErrs, "invalid value passed to 'size' flag; must be a positive integer")
 		}
 
-		if !filepath.IsAbs(cli.Exsmount.MountPoint) {
-			return fmt.Errorf("invalid value passed to 'mount-point' flag; must be an absolute path")
+		if len(validationErrs) > 0 {
+			fmt.Fprintln(os.Stderr, strings.Join(validationErrs, "\n"), "\n")
+			fmt.Fprintln(os.Stderr, cmd.UsageString())
+			return fmt.Errorf("invalid flag(s)")
 		}
 
-		return MountAndRun(cli)
+		return ebsmount.MountAndRun(cli)
 	},
 }
 
-type Args struct {
-	Command    string
-	Exsmount   *exsmount.Args
-}
-
-func DefaultArgs() *Args {
-	return &Args{
-		Exsmount: &exsmount.Args{
-			Size:       200,
-			VolumeType: "gp2",
-			FSType:     "ext4",
-			N: 1, 
-		},
-	}
-}
-
-var cli = DefaultArgs()
+var cli = ebsmount.DefaultArgs()
 
 func init() {
 	f := RootCmd.Flags()
@@ -65,7 +66,4 @@ func init() {
 	f.StringVarP(&cli.Exsmount.FSType, "fs-type", "t", cli.Exsmount.FSType, "file system type to create (argument must be accepted by mkfs)")
 	f.Int64VarP(&cli.Exsmount.Iops, "iops", "i", cli.Exsmount.Iops, "Provisioned IOPS. Only valid for volume type io1. Range is 100 to 20000 and <= 50*size of volume")
 	f.BoolVarP(&cli.Exsmount.Keep, "keep", "k", cli.Exsmount.Keep, "don't delete the volume on termination (default is to delete)")
-
-	RootCmd.MarkFlagRequired("command")
-	RootCmd.MarkFlagRequired("mount-point")
 }
