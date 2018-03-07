@@ -1,0 +1,21 @@
+[submodule "vendor/github.com/spf13/cobra"]
+	path = vendor/github.com/spf13/cobra
+	url = https://github.com/spf13/cobra
+[submodule "vendor/github.com/spf13/pflag"]
+	path = vendor/github.com/spf13/pflag
+	url = https://github.com/spf13/pflag
+[submodule "vendor/github.com/base2genomics/batchit"]
+	path = vendor/github.com/base2genomics/batchit
+	url = https://github.com/base2genomics/batchit
+[submodule "vendor/github.com/alexflint/go-arg"]
+	path = vendor/github.com/alexflint/go-arg
+	url = https://github.com/alexflint/go-arg
+[submodule "vendor/github.com/aws/aws-sdk-go"]
+	path = vendor/github.com/aws/aws-sdk-go
+	url = https://github.com/aws/aws-sdk-go
+[submodule "vendor/github.com/pkg/errors"]
+	path = vendor/github.com/pkg/errors
+	url = https://github.com/pkg/errors
+[submodule "vendor/github.com/kballard/go-shellquote"]
+	path = vendor/github.com/kballard/go-shellquote
+	url = https://github.com/kballard/go-shellquote
