@@ -46,6 +46,19 @@ func MountAndRun(args *Args) (err error) {
 	vid, _ := ioutil.ReadAll(r)
 	os.Stdout = OGStdout
 
+	// Cleanup the volume on exit
+	defer func() {
+		derr := ddv.DetachAndDelete(string(vid))
+		if derr != nil {
+			if err != nil {
+				err = fmt.Errorf("command error: %v; detach and delete volume error: %v", err, derr)
+			} else {
+				err = fmt.Errorf("detach and delete volume error: %v", derr)
+			}
+		}
+	}()
+
+	// Mount the newly created volume
 	if devices, err := exsmount.MountLocal(devices, args.Exsmount.MountPoint); err != nil {
 		return fmt.Errorf("MountLocal call failed: %v", err)
 	} else if args.Exsmount.VolumeType == "st1" || args.Exsmount.VolumeType == "sc1" {
@@ -59,18 +72,6 @@ func MountAndRun(args *Args) (err error) {
 		}
 	}
 	fmt.Fprintf(os.Stderr, "mounted %d EBS drives to %s\n", len(devices), args.Exsmount.MountPoint)
-
-	// Cleanup the volume on exit
-	defer func() {
-		derr := ddv.DetachAndDelete(string(vid))
-		if derr != nil {
-			if err != nil {
-				err = fmt.Errorf("command error: %v; detach and delete volume error: %v", err, derr)
-			} else {
-				err = fmt.Errorf("detach and delete volume error: %v", derr)
-			}
-		}
-	}()
 
 	// Run the command
 	cmdEntry := parsedCmd[0]
