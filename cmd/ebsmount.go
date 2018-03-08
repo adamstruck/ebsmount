@@ -10,6 +10,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+
+var cli = ebsmount.DefaultArgs()
+
+func init() {
+	f := RootCmd.Flags()
+	f.StringVarP(&cli.Command, "command", "c", cli.Command, "Command to run after volume mounting completes")
+	f.Int64VarP(&cli.Exsmount.Size, "size", "s", cli.Exsmount.Size, "size in GB of desired EBS volume")
+	f.StringVarP(&cli.Exsmount.MountPoint, "mount-point", "m", cli.Exsmount.MountPoint, "directory on which to mount the EBS volume")
+	f.StringVarP(&cli.Exsmount.VolumeType, "volume-type", "v", cli.Exsmount.VolumeType, "desired volume type; gp2 for General Purpose SSD; io1 for Provisioned IOPS SSD; st1 for Throughput Optimized HDD; sc1 for HDD or Magnetic volumes; standard for infrequent")
+	f.StringVarP(&cli.Exsmount.FSType, "fs-type", "t", cli.Exsmount.FSType, "file system type to create (argument must be accepted by mkfs)")
+	f.Int64VarP(&cli.Exsmount.Iops, "iops", "i", cli.Exsmount.Iops, "Provisioned IOPS. Only valid for volume type io1. Range is 100 to 20000 and <= 50*size of volume")
+	f.BoolVarP(&cli.Exsmount.Keep, "keep", "k", cli.Exsmount.Keep, "don't delete the volume on termination (default is to delete)")
+}
+
 // RootCmd represents the root command
 var RootCmd = &cobra.Command{
 	Use:           "ebsmount",
@@ -53,17 +67,4 @@ var RootCmd = &cobra.Command{
 
 		return ebsmount.MountAndRun(cli)
 	},
-}
-
-var cli = ebsmount.DefaultArgs()
-
-func init() {
-	f := RootCmd.Flags()
-	f.StringVarP(&cli.Command, "command", "c", cli.Command, "Command to run after volume mounting completes")
-	f.Int64VarP(&cli.Exsmount.Size, "size", "s", cli.Exsmount.Size, "size in GB of desired EBS volume")
-	f.StringVarP(&cli.Exsmount.MountPoint, "mount-point", "m", cli.Exsmount.MountPoint, "directory on which to mount the EBS volume")
-	f.StringVarP(&cli.Exsmount.VolumeType, "volume-type", "v", cli.Exsmount.VolumeType, "desired volume type; gp2 for General Purpose SSD; io1 for Provisioned IOPS SSD; st1 for Throughput Optimized HDD; sc1 for HDD or Magnetic volumes; standard for infrequent")
-	f.StringVarP(&cli.Exsmount.FSType, "fs-type", "t", cli.Exsmount.FSType, "file system type to create (argument must be accepted by mkfs)")
-	f.Int64VarP(&cli.Exsmount.Iops, "iops", "i", cli.Exsmount.Iops, "Provisioned IOPS. Only valid for volume type io1. Range is 100 to 20000 and <= 50*size of volume")
-	f.BoolVarP(&cli.Exsmount.Keep, "keep", "k", cli.Exsmount.Keep, "don't delete the volume on termination (default is to delete)")
 }
