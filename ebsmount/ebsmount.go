@@ -2,9 +2,10 @@ package ebsmount
 
 import (
 	"fmt"
-	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/base2genomics/batchit/ddv"
 	"github.com/base2genomics/batchit/exsmount"
@@ -34,26 +35,25 @@ func MountAndRun(args *Args) (err error) {
 	}
 
 	// Create and mount the EBS volume
-	// This method prints the volume id to stdout...
-	OGStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	devices, err := exsmount.CreateAttach(args.Exsmount)
+	devices, volumes, err := exsmount.CreateAttach(args.Exsmount)
 	if err != nil {
 		return fmt.Errorf("CreateAttach call failed: %v", err)
 	}
-	w.Close()
-	vid, _ := ioutil.ReadAll(r)
-	os.Stdout = OGStdout
 
 	// Cleanup the volume on exit
 	defer func() {
-		derr := ddv.DetachAndDelete(string(vid))
-		if derr != nil {
+		errs := []string{}
+		for _, vid := range volumes {
+			derr := ddv.DetachAndDelete(string(vid))
+			if derr != nil {
+				errs = append(errs, derr.Error())
+			}
+		}
+		if len(errs) > 0 {
 			if err != nil {
-				err = fmt.Errorf("command error: %v; detach and delete volume error: %v", err, derr)
+				err = fmt.Errorf("original error: %v; detach and delete volume error: %v", err, strings.Join(errs, "; "))
 			} else {
-				err = fmt.Errorf("detach and delete volume error: %v", derr)
+				err = fmt.Errorf("detach and delete volume error: %v", strings.Join(errs, "; "))
 			}
 		}
 	}()
@@ -67,16 +67,15 @@ func MountAndRun(args *Args) (err error) {
 			cmd := exec.Command("blockdev", "--setra", "2048", d)
 			cmd.Stderr, cmd.Stdout = os.Stderr, os.Stderr
 			if err := cmd.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: error setting read-ahead: %v\n", err)
+				log.Printf("warning: error setting read-ahead: %v\n", err)
 			}
 		}
 	}
-	fmt.Fprintf(os.Stderr, "mounted %d EBS drives to %s\n", len(devices), args.Exsmount.MountPoint)
+	log.Printf("mounted %d EBS drive to %s\n", len(devices), args.Exsmount.MountPoint)
 
 	// Run the command
-	cmdEntry := parsedCmd[0]
-	cmdArgs := parsedCmd[1:]
-	cmd := exec.Command(cmdEntry, cmdArgs...)
+	log.Println("Running command:", strings.Join(parsedCmd, " "))
+	cmd := exec.Command(parsedCmd[0], parsedCmd[1:]...)
 	cmd.Stderr, cmd.Stdout = os.Stderr, os.Stderr
 	return cmd.Run()
 }
