@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/adamstruck/ebsmount/ebsmount"
@@ -30,7 +33,10 @@ func (m *UnmountRequest) Validate() error {
 	return nil
 }
 
-func Run(port string) error {
+func Run(pctx context.Context, socket string) error {
+	ctx, cancel := context.WithCancel(pctx)
+	defer cancel()
+
 	mounter, err := ebsmount.NewEC2Mounter()
 	if err != nil {
 		return err
@@ -91,6 +97,24 @@ func Run(port string) error {
 		return
 	})
 
-	log.Println("listening on port", port)
-	return http.ListenAndServe(":"+port, mux)
+	server := http.Server{
+		Handler: mux,
+	}
+
+	unixListener, err := net.Listen("unix", socket)
+	if err != nil {
+		return err
+	}
+
+	var srverr error
+	go func() {
+		srverr = server.Serve(unixListener)
+		cancel()
+	}()
+	log.Println("listening on socket", socket)
+
+	<-ctx.Done()
+	os.Remove(socket)
+	server.Shutdown(context.TODO())
+	return srverr
 }
