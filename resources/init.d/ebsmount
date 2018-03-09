@@ -1,0 +1,86 @@
+#!/bin/bash
+# chkconfig: 2345 20 80
+# description: Daemon for ebsmount server
+
+### BEGIN INIT INFO
+# Provides:       ebsmount
+# Required-Start:
+# Required-Stop:
+# Should-Start:
+# Should-Stop:
+# Default-Start: 2 3 4 5
+# Default-Stop:  0 1 6
+# Short-Description: start and stop ebsmount
+# Description: Daemon for ebsmount server
+### END INIT INFO
+
+# Source function library.
+. /etc/init.d/functions
+
+program=ebsmount
+exec=/home/ec2-user/go/bin/ebsmount
+pidfile=/var/run/ebsmount.pid
+logfile=/var/log/$program
+lockfile=/var/lock/subsys/$program
+
+start() {
+    printf "Starting $program:\t"
+    if ! [ -f $pidfile ]; then
+	echo "\n$(date)\n" >> $logfile
+	nohup $exec server --port 9000 >> $logfile 2>&1 &
+	echo $! > $pidfile
+	touch $lockfile
+	if [ ! -f $pidfile ]; then
+	    failure
+	    echo
+	    return 1
+	fi
+	success
+	echo
+	return 0
+    else
+	failure
+	echo
+	printf "$pidfile still exists...\n"
+	return 7
+    fi
+}
+
+stop() {
+    echo -n $"Stopping $program: "
+    killproc -p $pidfile $program
+    retval=$?
+    if [ $retval -eq 0 ]; then
+	rm -f $lockfile
+	success
+	echo
+    else
+	failure
+	echo
+    fi
+    return $retval
+}
+
+rh_status() {
+    status -p $pidfile $program
+}
+
+case "$1" in
+    start)
+       start
+       ;;
+    stop)
+       stop
+       ;;
+    restart)
+       stop
+       start
+       ;;
+    status)
+       rh_status
+       ;;
+    *)
+       echo "Usage: $0 {start|stop|status|restart}"
+esac
+
+exit 0
