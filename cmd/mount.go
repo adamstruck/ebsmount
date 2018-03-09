@@ -3,8 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/adamstruck/ebsmount/ebsmount"
 	"github.com/spf13/cobra"
@@ -36,32 +34,9 @@ var mountCmd = &cobra.Command{
 	Use:   "mount",
 	Short: "Mount an EBS volume to an EC2 instance.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		validationErrs := []string{}
-
-		if cli.MountPoint == "" {
-			validationErrs = append(validationErrs, "required flag 'mount-point' not set")
-		} else if !filepath.IsAbs(cli.MountPoint) {
-			validationErrs = append(validationErrs, "invalid value passed to 'mount-point' flag; must be an absolute path")
-		}
-
-		if cli.VolumeType != "gp2" && cli.VolumeType != "io1" && cli.VolumeType != "st1" && cli.VolumeType != "sc1" && cli.VolumeType != "standard" {
-			validationErrs = append(validationErrs, "invalid value passed to 'volume-type' flag; must be one of [ 'gp2', 'io1', 'st1', 'sc1', 'standard' ]")
-		}
-
-		if cli.FSType != "ext4" && cli.FSType != "ext3" && cli.FSType != "ext2" {
-			validationErrs = append(validationErrs, "invalid value passed to 'fs-type' flag; must be one of [ 'ext4', 'ext3', 'ext2' ]")
-		}
-
-		if cli.Iops != 0 && (cli.Iops < 100 || cli.Iops > 20000) {
-			validationErrs = append(validationErrs, "invalid value passed to 'iops' flag; range is 100 to 20000 and <= 50*size of volume")
-		}
-
-		if cli.Size < 0 {
-			validationErrs = append(validationErrs, "invalid value passed to 'size' flag; must be a positive integer")
-		}
-
-		if len(validationErrs) > 0 {
-			fmt.Fprintln(os.Stderr, strings.Join(validationErrs, "\n"), "\n")
+		err := cli.Validate()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err, "\n")
 			fmt.Fprintln(os.Stderr, cmd.UsageString())
 			return fmt.Errorf("invalid flag(s)")
 		}

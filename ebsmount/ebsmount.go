@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -27,6 +28,42 @@ type MountRequest struct {
 	FSType     string
 	Iops       int64
 	Keep       bool
+}
+
+func (m MountRequest) Validate() error {
+	validationErrs := []string{}
+
+	if m.MountPoint == "" {
+		validationErrs = append(validationErrs, "MountPoint not set")
+	} else if !filepath.IsAbs(m.MountPoint) {
+		validationErrs = append(validationErrs, "invalid MountPoint; must be an absolute path")
+	}
+
+	if m.VolumeType == "" {
+		validationErrs = append(validationErrs, "VolumeType not set")
+	} else if m.VolumeType != "gp2" && m.VolumeType != "io1" && m.VolumeType != "st1" && m.VolumeType != "sc1" && m.VolumeType != "standard" {
+		validationErrs = append(validationErrs, "invalid VolumeType; must be one of [ 'gp2', 'io1', 'st1', 'sc1', 'standard' ]")
+	}
+
+	if m.FSType == "" {
+		validationErrs = append(validationErrs, "FSType not set")
+	} else if m.FSType != "ext4" && m.FSType != "ext3" && m.FSType != "ext2" {
+		validationErrs = append(validationErrs, "invalid FSType; must be one of [ 'ext4', 'ext3', 'ext2' ]")
+	}
+
+	if m.Iops != 0 && (m.Iops < 100 || m.Iops > 20000) {
+		validationErrs = append(validationErrs, "invalid IOPS value; range is 100 to 20000 and <= 50*size of volume")
+	}
+
+	if m.Size < 0 {
+		validationErrs = append(validationErrs, "invalid Size value; must be a positive integer")
+	}
+
+	if len(validationErrs) > 0 {
+		return fmt.Errorf(strings.Join(validationErrs, "\n"))
+	}
+
+	return nil
 }
 
 type MountResponse struct {
@@ -259,7 +296,7 @@ func (mounter *EC2Mounter) mountLocal(dev string, mountPoint string) error {
 	cmd := exec.Command("mkfs", "-t", "ext4", dev)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("mkfs failed: %s; %v", string(out), err)
+		return fmt.Errorf("mkfs failed: %s %v", string(out), err)
 	}
 
 	log.Printf("mounting %s to %s", dev, mountPoint)
@@ -273,7 +310,7 @@ func (mounter *EC2Mounter) mountLocal(dev string, mountPoint string) error {
 	cmd = exec.Command("mount", "-o", "noatime", dev, mountPoint)
 	out, err = cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("mount failed: %s; %v", string(out), err)
+		return fmt.Errorf("mount failed: %s %v", string(out), err)
 	}
 
 	return nil

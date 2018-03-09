@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -32,8 +33,15 @@ func Run(port string) error {
 			http.Error(w, err.Error(), 400)
 			return
 		}
+		err = mountReq.Validate()
+		if err != nil {
+			err = fmt.Errorf("Request validation failed:\n%s", err)
+			http.Error(w, err.Error(), 400)
+			return
+		}
 		resp, err := mounter.CreateAndMount(&mountReq)
 		if err != nil {
+			log.Println("Failed to create and mount volume", err.Error())
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -52,8 +60,13 @@ func Run(port string) error {
 			http.Error(w, err.Error(), 400)
 			return
 		}
+		if unmountReq.VolumeID == "" {
+			http.Error(w, "Request validation failed:\nVolumeID not set", 400)
+			return
+		}
 		err = mounter.DetachAndDelete(unmountReq.VolumeID)
 		if err != nil {
+			log.Println("Failed to detach  and/or delete volume", err.Error())
 			http.Error(w, err.Error(), 500)
 			return
 		}
