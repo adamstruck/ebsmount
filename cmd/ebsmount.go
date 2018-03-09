@@ -10,18 +10,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func DefaultArgs() *ebsmount.MountRequest {
+	return &ebsmount.MountRequest{
+		Size:       200,
+		VolumeType: "gp2",
+		FSType:     "ext4",
+	}
+}
 
-var cli = ebsmount.DefaultArgs()
+var cli = DefaultArgs()
 
 func init() {
 	f := RootCmd.Flags()
-	f.StringVarP(&cli.Command, "command", "c", cli.Command, "Command to run after volume mounting completes")
-	f.Int64VarP(&cli.Exsmount.Size, "size", "s", cli.Exsmount.Size, "size in GB of desired EBS volume")
-	f.StringVarP(&cli.Exsmount.MountPoint, "mount-point", "m", cli.Exsmount.MountPoint, "directory on which to mount the EBS volume")
-	f.StringVarP(&cli.Exsmount.VolumeType, "volume-type", "v", cli.Exsmount.VolumeType, "desired volume type; gp2 for General Purpose SSD; io1 for Provisioned IOPS SSD; st1 for Throughput Optimized HDD; sc1 for HDD or Magnetic volumes; standard for infrequent")
-	f.StringVarP(&cli.Exsmount.FSType, "fs-type", "t", cli.Exsmount.FSType, "file system type to create (argument must be accepted by mkfs)")
-	f.Int64VarP(&cli.Exsmount.Iops, "iops", "i", cli.Exsmount.Iops, "Provisioned IOPS. Only valid for volume type io1. Range is 100 to 20000 and <= 50*size of volume")
-	f.BoolVarP(&cli.Exsmount.Keep, "keep", "k", cli.Exsmount.Keep, "don't delete the volume on termination (default is to delete)")
+	f.Int64VarP(&cli.Size, "size", "s", cli.Size, "size in GB of desired EBS volume")
+	f.StringVarP(&cli.MountPoint, "mount-point", "m", cli.MountPoint, "directory on which to mount the EBS volume")
+	f.StringVarP(&cli.VolumeType, "volume-type", "v", cli.VolumeType, "desired volume type; gp2 for General Purpose SSD; io1 for Provisioned IOPS SSD; st1 for Throughput Optimized HDD; sc1 for HDD or Magnetic volumes; standard for infrequent")
+	f.StringVarP(&cli.FSType, "fs-type", "t", cli.FSType, "file system type to create (argument must be accepted by mkfs)")
+	f.Int64VarP(&cli.Iops, "iops", "i", cli.Iops, "Provisioned IOPS. Only valid for volume type io1. Range is 100 to 20000 and <= 50*size of volume")
+	f.BoolVarP(&cli.Keep, "keep", "k", cli.Keep, "don't delete the volume on termination (default is to delete)")
 }
 
 // RootCmd represents the root command
@@ -33,29 +39,25 @@ var RootCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		validationErrs := []string{}
 
-		if cli.Command == "" {
-			validationErrs = append(validationErrs, "required flag 'command' not set")
-		}
-
-		if cli.Exsmount.MountPoint == "" {
+		if cli.MountPoint == "" {
 			validationErrs = append(validationErrs, "required flag 'mount-point' not set")
-		} else if !filepath.IsAbs(cli.Exsmount.MountPoint) {
+		} else if !filepath.IsAbs(cli.MountPoint) {
 			validationErrs = append(validationErrs, "invalid value passed to 'mount-point' flag; must be an absolute path")
 		}
 
-		if cli.Exsmount.VolumeType != "gp2" && cli.Exsmount.VolumeType != "io1" && cli.Exsmount.VolumeType != "st1" && cli.Exsmount.VolumeType != "sc1" && cli.Exsmount.VolumeType != "standard" {
+		if cli.VolumeType != "gp2" && cli.VolumeType != "io1" && cli.VolumeType != "st1" && cli.VolumeType != "sc1" && cli.VolumeType != "standard" {
 			validationErrs = append(validationErrs, "invalid value passed to 'volume-type' flag; must be one of [ 'gp2', 'io1', 'st1', 'sc1', 'standard' ]")
 		}
 
-		if cli.Exsmount.FSType != "ext4" {
-			validationErrs = append(validationErrs, "invalid value passed to 'fs-type' flag; must be one of [ 'ext4' ]")
+		if cli.FSType != "ext4" && cli.FSType != "ext3" && cli.FSType != "ext2" {
+			validationErrs = append(validationErrs, "invalid value passed to 'fs-type' flag; must be one of [ 'ext4', 'ext3', 'ext2' ]")
 		}
 
-		if cli.Exsmount.Iops != 0 && (cli.Exsmount.Iops < 100 || cli.Exsmount.Iops > 20000) {
+		if cli.Iops != 0 && (cli.Iops < 100 || cli.Iops > 20000) {
 			validationErrs = append(validationErrs, "invalid value passed to 'iops' flag; range is 100 to 20000 and <= 50*size of volume")
 		}
 
-		if cli.Exsmount.Size < 0 {
+		if cli.Size < 0 {
 			validationErrs = append(validationErrs, "invalid value passed to 'size' flag; must be a positive integer")
 		}
 
@@ -65,6 +67,10 @@ var RootCmd = &cobra.Command{
 			return fmt.Errorf("invalid flag(s)")
 		}
 
-		return ebsmount.MountAndRun(cli)
+		mounter, err := ebsmount.NewEC2Mounter()
+		if err != nil {
+			return err
+		}
+		return mounter.CreateAndMount(cli)
 	},
 }

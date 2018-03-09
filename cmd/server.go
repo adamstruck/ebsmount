@@ -5,11 +5,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var port int
+var port string
 
 func init() {
 	f := serverCmd.Flags()
-	f.IntVarP(&port, "port", "p", 9000, "http port")
+	f.StringVarP(&port, "port", "p", "9000", "http port")
 
 	RootCmd.AddCommand(serverCmd)
 }
