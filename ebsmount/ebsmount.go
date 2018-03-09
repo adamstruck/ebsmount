@@ -296,7 +296,7 @@ func (mounter *EC2Mounter) mountLocal(dev string, mountPoint string) error {
 	cmd := exec.Command("mkfs", "-t", "ext4", dev)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("mkfs failed: %s %v", string(out), err)
+		return fmt.Errorf("mkfs failed: %s\n%v", string(out), err)
 	}
 
 	log.Printf("mounting %s to %s", dev, mountPoint)
@@ -310,18 +310,30 @@ func (mounter *EC2Mounter) mountLocal(dev string, mountPoint string) error {
 	cmd = exec.Command("mount", "-o", "noatime", dev, mountPoint)
 	out, err = cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("mount failed: %s %v", string(out), err)
+		return fmt.Errorf("mount failed: %s\n%v", string(out), err)
 	}
 
 	return nil
 }
 
 func (mounter *EC2Mounter) CreateAndMount(args *MountRequest) (*MountResponse, error) {
+	var mounted bool
+
 	// Create and mount the EBS volume
 	vol, err := mounter.createAttach(args)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create and attach an EBS volume")
 	}
+
+	defer func() {
+		if !mounted {
+			log.Println("unsuccessful EBS volume attachment, deleting volume")
+			err := mounter.DetachAndDelete(vol.VolumeID)
+			if err != nil {
+				log.Println("error deleting volume:", err)
+			}
+		}
+	}()
 
 	// Mount the newly created volume
 	err = mounter.mountLocal(vol.Device, args.MountPoint)
@@ -337,6 +349,7 @@ func (mounter *EC2Mounter) CreateAndMount(args *MountRequest) (*MountResponse, e
 		}
 	}
 
+	mounted = true
 	log.Printf("mounted EBS volume %s on device %s to %s\n", vol.VolumeID, vol.Device, args.MountPoint)
 	return vol, nil
 }

@@ -41,7 +41,7 @@ func Run(port string) error {
 		}
 		resp, err := mounter.CreateAndMount(&mountReq)
 		if err != nil {
-			log.Println("Failed to create and mount volume", err.Error())
+			log.Println(err.Error())
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -66,7 +66,7 @@ func Run(port string) error {
 		}
 		err = mounter.DetachAndDelete(unmountReq.VolumeID)
 		if err != nil {
-			log.Println("Failed to detach  and/or delete volume", err.Error())
+			log.Println(err.Error())
 			http.Error(w, err.Error(), 500)
 			return
 		}
