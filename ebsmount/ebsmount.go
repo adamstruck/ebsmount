@@ -61,7 +61,7 @@ func NewEC2Mounter() (*EC2Mounter, error) {
 	}, nil
 }
 
-func (mounter *EC2Mounter) Create(size int64, vtype string, iops int64) (*ec2.Volume, error) {
+func (mounter *EC2Mounter) create(size int64, vtype string, iops int64) (*ec2.Volume, error) {
 	cvi := &ec2.CreateVolumeInput{
 		AvailabilityZone: aws.String(mounter.IID.AvailabilityZone),
 		Size:             aws.Int64(size), //GB
@@ -93,10 +93,10 @@ func (mounter *EC2Mounter) Create(size int64, vtype string, iops int64) (*ec2.Vo
 
 	rsp, err := mounter.EC2.CreateVolume(cvi)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "CreateVolume returned an error")
 	}
 
-	err = mounter.WaitForVolumeStatus(*rsp.VolumeId, "available")
+	err = mounter.waitForVolumeStatus(*rsp.VolumeId, "available")
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func (mounter *EC2Mounter) Create(size int64, vtype string, iops int64) (*ec2.Vo
 	return rsp, nil
 }
 
-func (mounter *EC2Mounter) Attach(volumeID string) (*MountResponse, error) {
+func (mounter *EC2Mounter) attach(volumeID string) (*MountResponse, error) {
 	var attached bool
 
 	defer func() {
@@ -149,15 +149,15 @@ func (mounter *EC2Mounter) Attach(volumeID string) (*MountResponse, error) {
 				time.Sleep(time.Duration(1000+rand.Int63n(1000)) * time.Millisecond)
 				continue
 			}
-			return nil, fmt.Errorf("failed to attach device")
+			return nil, fmt.Errorf("failed to attach volume %s: %v", volumeID, err)
 		}
 
-		err = mounter.WaitForVolumeStatus(volumeID, "in-use")
+		err = mounter.waitForVolumeStatus(volumeID, "in-use")
 		if err != nil {
 			return nil, err
 		}
 
-		if !WaitForDevice(device) {
+		if !mounter.waitForDevice(device) {
 			return nil, fmt.Errorf("error waiting for device %s to attach", device)
 		}
 
@@ -166,13 +166,13 @@ func (mounter *EC2Mounter) Attach(volumeID string) (*MountResponse, error) {
 	}
 
 	if !attached {
-		return nil, fmt.Errorf("failed to attach device")
+		return nil, fmt.Errorf("failed to find and attach device")
 	}
 
 	return &MountResponse{device, volumeID}, nil
 }
 
-func (mounter *EC2Mounter) WaitForVolumeStatus(volumeId string, status string) error {
+func (mounter *EC2Mounter) waitForVolumeStatus(volumeId string, status string) error {
 	var xstatus string
 	for i := 0; i < 30; i++ {
 		drsp, err := mounter.EC2.DescribeVolumes(
@@ -180,10 +180,10 @@ func (mounter *EC2Mounter) WaitForVolumeStatus(volumeId string, status string) e
 				VolumeIds: []*string{aws.String(volumeId)},
 			})
 		if err != nil {
-			return errors.Wrapf(err, "error waiting for volume: %s status: %s", volumeId, status)
+			return errors.Wrapf(err, "DescribeVolumes returned an error")
 		}
 		if len(drsp.Volumes) == 0 {
-			return fmt.Errorf("volume: %s not found", volumeId)
+			return fmt.Errorf("volume %s not found", volumeId)
 		}
 		xstatus = *drsp.Volumes[0].State
 		if xstatus == status {
@@ -191,10 +191,10 @@ func (mounter *EC2Mounter) WaitForVolumeStatus(volumeId string, status string) e
 		}
 		time.Sleep(time.Duration(5000+rand.Int63n(5000)) * time.Millisecond)
 	}
-	return fmt.Errorf("never found volume: %s with status: %s. last was: %s", volumeId, status, xstatus)
+	return fmt.Errorf("volume %s never transitioned to status %s. last was: %s", volumeId, status, xstatus)
 }
 
-func WaitForDevice(device string) bool {
+func (mounter *EC2Mounter) waitForDevice(device string) bool {
 	for i := 0; i < 30; i++ {
 		if _, err := os.Stat(device); err != nil {
 			time.Sleep(2 * time.Second)
@@ -205,7 +205,7 @@ func WaitForDevice(device string) bool {
 	return false
 }
 
-func (mounter *EC2Mounter) DeleteOnTermination(volumeId string, device string) error {
+func (mounter *EC2Mounter) deleteOnTermination(volumeId string, device string) error {
 	moi := &ec2.ModifyInstanceAttributeInput{
 		InstanceId: aws.String(mounter.IID.InstanceID),
 		BlockDeviceMappings: []*ec2.InstanceBlockDeviceMappingSpecification{
@@ -224,22 +224,24 @@ func (mounter *EC2Mounter) DeleteOnTermination(volumeId string, device string) e
 	return nil
 }
 
-func (mounter *EC2Mounter) CreateAttach(cli *MountRequest) (*MountResponse, error) {
+func (mounter *EC2Mounter) createAttach(cli *MountRequest) (*MountResponse, error) {
 	log.Println("creating EBS volume")
-	createResp, err := mounter.Create(cli.Size, cli.VolumeType, cli.Iops)
+	createResp, err := mounter.create(cli.Size, cli.VolumeType, cli.Iops)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating volume")
 	}
+	log.Println("created EBS volume", *createResp.VolumeId)
 
 	log.Println("attaching EBS volume")
-	attachResp, err := mounter.Attach(*createResp.VolumeId)
+	attachResp, err := mounter.attach(*createResp.VolumeId)
 	if err != nil {
 		return nil, errors.Wrap(err, "error attaching volume")
 	}
+	log.Println("attached EBS volume to", attachResp.Device)
 
 	if !cli.Keep {
 		log.Println("configuring EBS volume to delete on instance termination")
-		err = mounter.DeleteOnTermination(*createResp.VolumeId, attachResp.Device)
+		err = mounter.deleteOnTermination(*createResp.VolumeId, attachResp.Device)
 		if err != nil {
 			return nil, errors.Wrap(err, "error setting delete on termination")
 		}
@@ -248,7 +250,7 @@ func (mounter *EC2Mounter) CreateAttach(cli *MountRequest) (*MountResponse, erro
 	return attachResp, nil
 }
 
-func (mounter *EC2Mounter) MountLocal(dev string, mountPoint string) error {
+func (mounter *EC2Mounter) mountLocal(dev string, mountPoint string) error {
 	if _, err := os.Stat(dev); err != nil {
 		return errors.Wrap(err, "device does not appear to be attached")
 	}
@@ -277,17 +279,17 @@ func (mounter *EC2Mounter) MountLocal(dev string, mountPoint string) error {
 	return nil
 }
 
-func (mounter *EC2Mounter) CreateAndMount(args *MountRequest) error {
+func (mounter *EC2Mounter) CreateAndMount(args *MountRequest) (*MountResponse, error) {
 	// Create and mount the EBS volume
-	vol, err := mounter.CreateAttach(args)
+	vol, err := mounter.createAttach(args)
 	if err != nil {
-		return errors.Wrap(err, "CreateAttach call failed")
+		return nil, errors.Wrap(err, "failed to create and attach an EBS volume")
 	}
 
 	// Mount the newly created volume
-	err = mounter.MountLocal(vol.Device, args.MountPoint)
+	err = mounter.mountLocal(vol.Device, args.MountPoint)
 	if err != nil {
-		return errors.Wrap(err, "MountLocal call failed")
+		return nil, errors.Wrap(err, "failed to mount EBS volume")
 	}
 	if args.VolumeType == "st1" || args.VolumeType == "sc1" {
 		// https://aws.amazon.com/blogs/aws/amazon-ebs-update-new-cold-storage-and-throughput-options/
@@ -299,7 +301,7 @@ func (mounter *EC2Mounter) CreateAndMount(args *MountRequest) error {
 	}
 
 	log.Printf("mounted EBS volume %s on device %s to %s\n", vol.VolumeID, vol.Device, args.MountPoint)
-	return nil
+	return vol, nil
 }
 
 func (mounter *EC2Mounter) DetachAndDelete(volumeID string) error {
@@ -310,7 +312,7 @@ func (mounter *EC2Mounter) DetachAndDelete(volumeID string) error {
 			Force:    aws.Bool(true),
 		})
 		if err == nil {
-			werr := mounter.WaitForVolumeStatus(volumeID, "available")
+			werr := mounter.waitForVolumeStatus(volumeID, "available")
 			if werr != nil {
 				return werr
 			}

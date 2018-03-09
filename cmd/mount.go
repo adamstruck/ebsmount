@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func DefaultArgs() *ebsmount.MountRequest {
+func defaultMountArgs() *ebsmount.MountRequest {
 	return &ebsmount.MountRequest{
 		Size:       200,
 		VolumeType: "gp2",
@@ -18,24 +18,23 @@ func DefaultArgs() *ebsmount.MountRequest {
 	}
 }
 
-var cli = DefaultArgs()
+var cli = defaultMountArgs()
 
 func init() {
-	f := RootCmd.Flags()
+	f := mountCmd.Flags()
 	f.Int64VarP(&cli.Size, "size", "s", cli.Size, "size in GB of desired EBS volume")
 	f.StringVarP(&cli.MountPoint, "mount-point", "m", cli.MountPoint, "directory on which to mount the EBS volume")
 	f.StringVarP(&cli.VolumeType, "volume-type", "v", cli.VolumeType, "desired volume type; gp2 for General Purpose SSD; io1 for Provisioned IOPS SSD; st1 for Throughput Optimized HDD; sc1 for HDD or Magnetic volumes; standard for infrequent")
 	f.StringVarP(&cli.FSType, "fs-type", "t", cli.FSType, "file system type to create (argument must be accepted by mkfs)")
 	f.Int64VarP(&cli.Iops, "iops", "i", cli.Iops, "Provisioned IOPS. Only valid for volume type io1. Range is 100 to 20000 and <= 50*size of volume")
 	f.BoolVarP(&cli.Keep, "keep", "k", cli.Keep, "don't delete the volume on termination (default is to delete)")
+
+	RootCmd.AddCommand(mountCmd)
 }
 
-// RootCmd represents the root command
-var RootCmd = &cobra.Command{
-	Use:           "ebsmount",
-	Short:         "Mount an EBS volume to an EC2 instance and run a command.",
-	SilenceUsage:  true,
-	SilenceErrors: false,
+var mountCmd = &cobra.Command{
+	Use:   "mount",
+	Short: "Mount an EBS volume to an EC2 instance.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		validationErrs := []string{}
 
@@ -71,6 +70,11 @@ var RootCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return mounter.CreateAndMount(cli)
+
+		_, err = mounter.CreateAndMount(cli)
+		if err != nil {
+			return err
+		}
+		return nil
 	},
 }
