@@ -6,12 +6,28 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/adamstruck/ebsmount/ebsmount"
 )
 
 type UnmountRequest struct {
-	VolumeID string
+	VolumeID   string
+	MountPoint string
+}
+
+func (m *UnmountRequest) Validate() error {
+	validationErrs := []string{}
+	if m.VolumeID == "" {
+		validationErrs = append(validationErrs, "VolumeID not set")
+	}
+	if m.MountPoint == "" {
+		validationErrs = append(validationErrs, "MountPoint not set")
+	}
+	if len(validationErrs) > 0 {
+		return fmt.Errorf(strings.Join(validationErrs, "\n"))
+	}
+	return nil
 }
 
 func Run(port string) error {
@@ -60,11 +76,13 @@ func Run(port string) error {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		if unmountReq.VolumeID == "" {
-			http.Error(w, "Request validation failed:\nVolumeID not set", 400)
+		err = unmountReq.Validate()
+		if err != nil {
+			err = fmt.Errorf("Request validation failed:\n%s", err)
+			http.Error(w, err.Error(), 400)
 			return
 		}
-		err = mounter.DetachAndDelete(unmountReq.VolumeID)
+		err = mounter.DetachAndDelete(unmountReq.VolumeID, unmountReq.MountPoint)
 		if err != nil {
 			log.Println(err.Error())
 			http.Error(w, err.Error(), 500)

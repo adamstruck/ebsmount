@@ -30,39 +30,32 @@ type MountRequest struct {
 	Keep       bool
 }
 
-func (m MountRequest) Validate() error {
+func (m *MountRequest) Validate() error {
 	validationErrs := []string{}
-
 	if m.MountPoint == "" {
 		validationErrs = append(validationErrs, "MountPoint not set")
 	} else if !filepath.IsAbs(m.MountPoint) {
 		validationErrs = append(validationErrs, "invalid MountPoint; must be an absolute path")
 	}
-
 	if m.VolumeType == "" {
 		validationErrs = append(validationErrs, "VolumeType not set")
 	} else if m.VolumeType != "gp2" && m.VolumeType != "io1" && m.VolumeType != "st1" && m.VolumeType != "sc1" && m.VolumeType != "standard" {
 		validationErrs = append(validationErrs, "invalid VolumeType; must be one of [ 'gp2', 'io1', 'st1', 'sc1', 'standard' ]")
 	}
-
 	if m.FSType == "" {
 		validationErrs = append(validationErrs, "FSType not set")
 	} else if m.FSType != "ext4" && m.FSType != "ext3" && m.FSType != "ext2" {
 		validationErrs = append(validationErrs, "invalid FSType; must be one of [ 'ext4', 'ext3', 'ext2' ]")
 	}
-
 	if m.Iops != 0 && (m.Iops < 100 || m.Iops > 20000) {
 		validationErrs = append(validationErrs, "invalid IOPS value; range is 100 to 20000 and <= 50*size of volume")
 	}
-
 	if m.Size < 0 {
 		validationErrs = append(validationErrs, "invalid Size value; must be a positive integer")
 	}
-
 	if len(validationErrs) > 0 {
 		return fmt.Errorf(strings.Join(validationErrs, "\n"))
 	}
-
 	return nil
 }
 
@@ -123,7 +116,7 @@ func (mounter *EC2Mounter) create(size int64, vtype string, iops int64) (*ec2.Vo
 			if iops > 200000 {
 				iops = 20000
 			}
-			log.Printf("setting IOPs value to %s; value must be <= 50 times size", iops)
+			log.Printf("setting IOPs value to %v; value must be <= 50 times size", iops)
 		}
 		cvi.Iops = aws.Int64(iops)
 	}
@@ -147,7 +140,7 @@ func (mounter *EC2Mounter) attach(volumeID string) (*MountResponse, error) {
 	defer func() {
 		if !attached {
 			log.Println("unsuccessful EBS volume attachment, deleting volume")
-			err := mounter.DetachAndDelete(volumeID)
+			err := mounter.DetachAndDelete(volumeID, "")
 			if err != nil {
 				log.Println("error deleting volume:", err)
 			}
@@ -181,7 +174,7 @@ func (mounter *EC2Mounter) attach(volumeID string) (*MountResponse, error) {
 		if err != nil {
 			// race condition attaching devices from multiple containers to the same host /dev address.
 			// so retry with randomish wait time.
-			log.Printf("retrying EBS attach because of difficulty getting volume. error was: %+T. %s", err, err)
+			log.Printf("retrying EBS attach because of difficulty getting volume. error was: %v", err)
 			if strings.Contains(err.Error(), "is already in use") {
 				time.Sleep(time.Duration(1000+rand.Int63n(1000)) * time.Millisecond)
 				continue
@@ -194,7 +187,7 @@ func (mounter *EC2Mounter) attach(volumeID string) (*MountResponse, error) {
 			return nil, err
 		}
 
-		if !mounter.waitForDevice(device) {
+		if !mounter.waitForDeviceToExist(device) {
 			return nil, fmt.Errorf("error waiting for device %s to attach", device)
 		}
 
@@ -209,18 +202,18 @@ func (mounter *EC2Mounter) attach(volumeID string) (*MountResponse, error) {
 	return &MountResponse{device, volumeID}, nil
 }
 
-func (mounter *EC2Mounter) waitForVolumeStatus(volumeId string, status string) error {
+func (mounter *EC2Mounter) waitForVolumeStatus(volumeID string, status string) error {
 	var xstatus string
 	for i := 0; i < 30; i++ {
 		drsp, err := mounter.EC2.DescribeVolumes(
 			&ec2.DescribeVolumesInput{
-				VolumeIds: []*string{aws.String(volumeId)},
+				VolumeIds: []*string{aws.String(volumeID)},
 			})
 		if err != nil {
 			return errors.Wrapf(err, "DescribeVolumes returned an error")
 		}
 		if len(drsp.Volumes) == 0 {
-			return fmt.Errorf("volume %s not found", volumeId)
+			return fmt.Errorf("volume %s not found", volumeID)
 		}
 		xstatus = *drsp.Volumes[0].State
 		if xstatus == status {
@@ -228,10 +221,10 @@ func (mounter *EC2Mounter) waitForVolumeStatus(volumeId string, status string) e
 		}
 		time.Sleep(time.Duration(5000+rand.Int63n(5000)) * time.Millisecond)
 	}
-	return fmt.Errorf("volume %s never transitioned to status %s. last was: %s", volumeId, status, xstatus)
+	return fmt.Errorf("volume %s never transitioned to status %s. last was: %s", volumeID, status, xstatus)
 }
 
-func (mounter *EC2Mounter) waitForDevice(device string) bool {
+func (mounter *EC2Mounter) waitForDeviceToExist(device string) bool {
 	for i := 0; i < 30; i++ {
 		if _, err := os.Stat(device); err != nil {
 			time.Sleep(2 * time.Second)
@@ -242,7 +235,7 @@ func (mounter *EC2Mounter) waitForDevice(device string) bool {
 	return false
 }
 
-func (mounter *EC2Mounter) deleteOnTermination(volumeId string, device string) error {
+func (mounter *EC2Mounter) deleteOnTermination(volumeID string, device string) error {
 	moi := &ec2.ModifyInstanceAttributeInput{
 		InstanceId: aws.String(mounter.IID.InstanceID),
 		BlockDeviceMappings: []*ec2.InstanceBlockDeviceMappingSpecification{
@@ -250,7 +243,7 @@ func (mounter *EC2Mounter) deleteOnTermination(volumeId string, device string) e
 				DeviceName: aws.String(device),
 				Ebs: &ec2.EbsInstanceBlockDeviceSpecification{
 					DeleteOnTermination: aws.Bool(true),
-					VolumeId:            aws.String(volumeId),
+					VolumeId:            aws.String(volumeID),
 				},
 			}},
 	}
@@ -328,7 +321,7 @@ func (mounter *EC2Mounter) CreateAndMount(args *MountRequest) (*MountResponse, e
 	defer func() {
 		if !mounted {
 			log.Println("unsuccessful EBS volume attachment, deleting volume")
-			err := mounter.DetachAndDelete(vol.VolumeID)
+			err := mounter.DetachAndDelete(vol.VolumeID, "")
 			if err != nil {
 				log.Println("error deleting volume:", err)
 			}
@@ -354,7 +347,16 @@ func (mounter *EC2Mounter) CreateAndMount(args *MountRequest) (*MountResponse, e
 	return vol, nil
 }
 
-func (mounter *EC2Mounter) DetachAndDelete(volumeID string) error {
+func (mounter *EC2Mounter) DetachAndDelete(volumeID string, mountPoint string) error {
+	if mountPoint != "" {
+		log.Printf("unmounting %s", mountPoint)
+		cmd := exec.Command("umount", mountPoint)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("umount failed: %s\n%v", string(out), err)
+		}
+	}
+
 	log.Printf("detaching volume %s from instance %s", volumeID, mounter.IID.InstanceID)
 	for i := 0; i < 10; i++ {
 		v, err := mounter.EC2.DetachVolume(&ec2.DetachVolumeInput{

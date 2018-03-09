@@ -5,14 +5,16 @@ import (
 	"os"
 
 	"github.com/adamstruck/ebsmount/ebsmount"
+	"github.com/adamstruck/ebsmount/server"
 	"github.com/spf13/cobra"
 )
 
-var volumeID string
+var unmountReq = &server.UnmountRequest{}
 
 func init() {
 	f := unmountCmd.Flags()
-	f.StringVarP(&volumeID, "volume-id", "v", "", "EBS volume ID to detach and/or delete from instance")
+	f.StringVarP(&unmountReq.VolumeID, "volume-id", "v", unmountReq.VolumeID, "EBS volume ID to detach and/or delete from instance")
+	f.StringVarP(&unmountReq.MountPoint, "mount-point", "m", unmountReq.MountPoint, "directory to unmount")
 
 	RootCmd.AddCommand(unmountCmd)
 }
@@ -21,8 +23,9 @@ var unmountCmd = &cobra.Command{
 	Use:   "unmount",
 	Short: "Unmount an EBS volume from an EC2 instance.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if volumeID == "" {
-			fmt.Fprintln(os.Stderr, "required flag 'volume-id' not set", "\n")
+		err := unmountReq.Validate()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err, "\n")
 			fmt.Fprintln(os.Stderr, cmd.UsageString())
 			return fmt.Errorf("invalid flag(s)")
 		}
@@ -32,6 +35,6 @@ var unmountCmd = &cobra.Command{
 			return err
 		}
 
-		return mounter.DetachAndDelete(volumeID)
+		return mounter.DetachAndDelete(unmountReq.VolumeID, unmountReq.MountPoint)
 	},
 }
