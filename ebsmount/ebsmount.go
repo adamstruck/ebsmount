@@ -151,21 +151,26 @@ func (mounter *EC2Mounter) attach(volumeID string) (*MountResponse, error) {
 	// http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/volume_limits.html
 	// http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/device_naming.html
 	prefix := "/dev/sd"
-	letters := strings.Split("fghijklmnopqrstuvwxyz", "")
+	letters := strings.Split("abcdefghijklmnopqrstuvwxyz", "")
 	device := ""
-	// start at a random position
-	off := rand.Int63n(int64(len(letters)))
-	// retry up to 10 times
-	for k := int64(0); k < 10; k++ {
-		if off+k > int64(len(letters)-1) {
-			off = rand.Int63n(int64(len(letters)))
+	roff := rand.Int63n(int64(len(letters)))
+	var off int64
+	for k := int64(0); k < int64(len(letters)); k++ {
+		// start at a random position and loop back around if necessary
+		if k == 0 {
+			off = roff
+		}
+		if off > int64(len(letters))-1 {
+			off = 0
 		}
 
+		// check if the device is in use
 		device = prefix + letters[off]
 		if _, err := os.Stat(device); !os.IsNotExist(err) {
 			continue
 		}
 
+		// attach the volume to the device
 		_, err := mounter.EC2.AttachVolume(&ec2.AttachVolumeInput{
 			InstanceId: aws.String(mounter.IID.InstanceID),
 			VolumeId:   aws.String(volumeID),
@@ -177,6 +182,7 @@ func (mounter *EC2Mounter) attach(volumeID string) (*MountResponse, error) {
 			log.Printf("retrying EBS attach because of difficulty getting volume. error was: %v", err)
 			if strings.Contains(err.Error(), "is already in use") {
 				time.Sleep(time.Duration(1000+rand.Int63n(1000)) * time.Millisecond)
+				off++
 				continue
 			}
 			return nil, fmt.Errorf("failed to attach volume %s: %v", volumeID, err)
