@@ -24,9 +24,9 @@ func (m *UnmountRequest) Validate() error {
 	if m.VolumeID == "" {
 		validationErrs = append(validationErrs, "VolumeID not set")
 	}
-	if m.MountPoint == "" {
-		validationErrs = append(validationErrs, "MountPoint not set")
-	}
+	// if m.MountPoint == "" {
+	// 	validationErrs = append(validationErrs, "MountPoint not set")
+	// }
 	if len(validationErrs) > 0 {
 		return fmt.Errorf(strings.Join(validationErrs, "\n"))
 	}

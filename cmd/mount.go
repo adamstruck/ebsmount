@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -46,10 +47,15 @@ var mountCmd = &cobra.Command{
 			return err
 		}
 
-		_, err = mounter.CreateAndMount(mountReq)
+		resp, err := mounter.CreateAndMount(mountReq)
 		if err != nil {
 			return err
 		}
+		json, err := json.MarshalIndent(resp, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(json))
 		return nil
 	},
 }

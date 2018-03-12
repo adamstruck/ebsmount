@@ -17,10 +17,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-func init() {
-	rand.Seed(time.Now().Unix())
-}
-
 type MountRequest struct {
 	Size       int64
 	MountPoint string
@@ -153,12 +149,15 @@ func (mounter *EC2Mounter) attach(volumeID string) (*MountResponse, error) {
 	prefix := "/dev/sd"
 	letters := strings.Split("abcdefghijklmnopqrstuvwxyz", "")
 	device := ""
+	rand.Seed(time.Now().Unix())
 	roff := rand.Int63n(int64(len(letters)))
 	var off int64
 	for k := int64(0); k < int64(len(letters)); k++ {
 		// start at a random position and loop back around if necessary
 		if k == 0 {
 			off = roff
+		} else {
+			off++
 		}
 		if off > int64(len(letters))-1 {
 			off = 0
@@ -166,6 +165,7 @@ func (mounter *EC2Mounter) attach(volumeID string) (*MountResponse, error) {
 
 		// check if the device is in use
 		device = prefix + letters[off]
+		log.Println("trying device", device)
 		if _, err := os.Stat(device); !os.IsNotExist(err) {
 			continue
 		}
@@ -182,7 +182,6 @@ func (mounter *EC2Mounter) attach(volumeID string) (*MountResponse, error) {
 			log.Printf("retrying EBS attach because of difficulty getting volume. error was: %v", err)
 			if strings.Contains(err.Error(), "is already in use") {
 				time.Sleep(time.Duration(1000+rand.Int63n(1000)) * time.Millisecond)
-				off++
 				continue
 			}
 			return nil, fmt.Errorf("failed to attach volume %s: %v", volumeID, err)
@@ -225,15 +224,15 @@ func (mounter *EC2Mounter) waitForVolumeStatus(volumeID string, status string) e
 		if xstatus == status {
 			return nil
 		}
-		time.Sleep(time.Duration(5000+rand.Int63n(5000)) * time.Millisecond)
+		time.Sleep(time.Duration(1000+rand.Int63n(5000)) * time.Millisecond)
 	}
 	return fmt.Errorf("volume %s never transitioned to status %s. last was: %s", volumeID, status, xstatus)
 }
 
 func (mounter *EC2Mounter) waitForDeviceToExist(device string) bool {
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 120; i++ {
 		if _, err := os.Stat(device); err != nil {
-			time.Sleep(2 * time.Second)
+			time.Sleep(time.Second)
 		} else {
 			return true
 		}
