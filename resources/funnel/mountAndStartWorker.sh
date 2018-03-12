@@ -15,7 +15,10 @@ curl -d "{\"Size\": $DISK, \"MountPoint\": \"/mnt/$TASKID\", \"VolumeType\": \"g
      --unix-socket /var/run/ebsmount.sock \
      http://localhost/mount \
      > vid
+
+echo $(cat vid)
 VID=$(cat vid | jq -r .VolumeID)
+[ -z "$VID" ] && echo "VID was not set... exiting" && exit 1
 
 echo "starting funnel worker..."
 docker run -i \
