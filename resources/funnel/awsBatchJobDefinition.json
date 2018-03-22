@@ -1,0 +1,51 @@
+{
+    "jobDefinitionName": "funnel-ebsmounter",
+    "jobDefinitionArn": "arn:aws:batch:us-east-1:538745987955:job-definition/funnel-ebsmounter:7",
+    "revision": 1,
+    "status": "ACTIVE",
+    "type": "container",
+    "parameters": {},
+    "retryStrategy": {
+        "attempts": 1
+    },
+    "containerProperties": {
+        "image": "docker.io/adamstruck/ebsmount:latest",
+        "vcpus": 2,
+        "memory": 2000,
+        "command": [
+            "sh",
+            "/opt/mountAndStartWorker.sh"
+        ],
+        "jobRoleArn": "arn:aws:iam::538745987955:role/FunnelEcsTaskRole",
+        "volumes": [
+            {
+                "host": {
+                    "sourcePath": "/var/run/docker.sock"
+                },
+                "name": "docker_sock"
+            },
+            {
+                "host": {
+                    "sourcePath": "/var/run/ebsmount.sock"
+                },
+                "name": "ebsmount_sock"
+            }
+        ],
+        "environment": [],
+        "mountPoints": [
+            {
+                "containerPath": "/var/run/docker.sock",
+                "readOnly": false,
+                "sourceVolume": "docker_sock"
+            },
+            {
+                "containerPath": "/var/run/ebsmount.sock",
+                "readOnly": false,
+                "sourceVolume": "ebsmount_sock"
+            }
+        ],
+        "readonlyRootFilesystem": false,
+        "privileged": true,
+        "ulimits": []
+    }
+}

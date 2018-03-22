@@ -3,6 +3,8 @@
 set -e
 set -o pipefail
 
+curl http://169.254.169.254/latest/dynamic/instance-identity/document
+
 # check required env vars are set
 [ -z "$DISK" ] && echo "Need to set DISK"
 [ -z "$TASKID" ] && echo "Need to set TASKID"
