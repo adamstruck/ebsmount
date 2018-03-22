@@ -1,6 +1,6 @@
 {
     "jobDefinitionName": "funnel-ebsmounter",
-    "jobDefinitionArn": "arn:aws:batch:us-east-1:538745987955:job-definition/funnel-ebsmounter:7",
+    "jobDefinitionArn": "arn:aws:batch:us-east-1:538745987955:job-definition/funnel-ebsmounter:1",
     "revision": 1,
     "status": "ACTIVE",
     "type": "container",
