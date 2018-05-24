@@ -1,6 +1,6 @@
 # EBSMount
 
-ebsmount is a set of utilities for managing EBS volumes on a running EC2 instance.
+ebsmount is a set of utilities for managing EBS volumes on a running EC2 instance. It was inspired by the similar functionality in https://github.com/base2genomics/batchit.
 
 ### Install
 
